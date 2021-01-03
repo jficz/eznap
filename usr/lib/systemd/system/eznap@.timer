@@ -1,0 +1,6 @@
+[Unit]
+
+[Timer]
+OnCalendar=%i
+
+

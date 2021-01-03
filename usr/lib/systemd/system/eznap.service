@@ -1,0 +1,8 @@
+[Unit]
+Description="Creates ZFS snapshots"
+
+
+[Service]
+EnvironmentFile=/etc/default/zfs-auto-snapshot
+ExecStart=zfs-auto-snapshot --default-exclude --label=%i --keep=${%i_KEEP} //
+
