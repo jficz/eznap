@@ -1,0 +1,7 @@
+[Unit]
+Description="Creates ZFS snapshots"
+
+
+[Service]
+ExecStart=eznap %i
+

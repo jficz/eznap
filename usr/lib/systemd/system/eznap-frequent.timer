@@ -1,0 +1,6 @@
+[Unit]
+
+[Timer]
+OnUnitActiveSec=15m
+Unit=eznap@frequent
+

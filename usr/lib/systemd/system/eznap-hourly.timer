@@ -1,0 +1,6 @@
+[Unit]
+
+[Timer]
+OnUnitActiveSec=1h
+Unit=eznap@hourly
+
