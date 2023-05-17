@@ -2,5 +2,7 @@
 
 [Timer]
 OnUnitActiveSec=1w
-Unit=eznap@weekly
+Unit=eznap@weekly.service
 
+[Install]
+WantedBy=timers.target
