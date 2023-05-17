@@ -2,7 +2,7 @@
 
 appId="cz.jfi.eznap"
 appName="eznap"
-version="0.2.1"
+version="0.2.2"
 
 declare -A _keep
 ## Default number of snapshots to keep for each label
@@ -49,7 +49,7 @@ snapsToDestroy() {
   printf '%s\n' "${line[@]:$1}"
 }
 
-_zfs=$(command -pv zfs 2> /dev/null)
+_zfs=$(PATH=$PATH:/usr/sbin:/sbin:/usr/bin:/bin command -v zfs 2> /dev/null)
 [[ $? -gt 0 ]] && fail '`zfs` command not found.'
 
 [[ -z "$1" ]] && fail "Missing label." `usage`
