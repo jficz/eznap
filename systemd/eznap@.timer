@@ -3,7 +3,7 @@ Description=Trigger eznap on boot and then every %i minutes
 
 [Timer]
 OnBootSec=5min
-OnActiveSec=%i
+OnUnitInctiveSec=%i
 
 [Install]
 WantedBy=timers.target

@@ -2,7 +2,7 @@
 
 appId="cz.jfi.eznap"
 appName="eznap"
-version="0.3.2"
+version="0.3.3"
 
 declare -A _keep
 ## Default number of snapshots to keep for each label
