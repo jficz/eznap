@@ -2,7 +2,7 @@
 
 appId="cz.jfi.eznap"
 appName="eznap"
-version="0.3.0"
+version="0.3.1"
 
 declare -A _keep
 ## Default number of snapshots to keep for each label
@@ -18,20 +18,25 @@ _keep=(
 ret=0
 
 usage() {
-  echo "Usage: $0 <$(printf '%s | ' ${!_keep[@]} | head -c -3)>"
+  printf -v labels '%s | ' ${!_keep[@]}
+  echo
+  echo "eznap v${version} (c) 2023 jficz"
+  echo
+  echo "Usage: $0 < ${labels%|*}> | < trigger >"
   echo "Retun codes: 0 - success"
   echo "             1 - fatal failure, no changes made"
   echo "             2 - partial failure, some changes possibly made"
 }
 
 err() {
-  echo $* > /dev/stderr
+  echo E: $* > /dev/stderr
 }
 
 failcode() {
   ret=$1
   shift
   err $*
+  usage
   exit $ret
 }
 
@@ -73,9 +78,9 @@ snapsToDestroy() {
 _zfs=$(PATH=$PATH:/usr/sbin:/sbin:/usr/bin:/bin command -v zfs 2> /dev/null)
 [[ $? -gt 0 ]] && fail '`zfs` command not found.'
 
-[[ -z "$1" ]] && fail "Missing label." `usage`
+[[ -z "$1" ]] && fail "Missing label."
 
-[[ -z "${_keep[$1]}" && "$1" != "trigger" ]] && fail "Wrong label." `usage`
+[[ -z "${_keep[$1]}" && "$1" != "trigger" ]] && fail "Wrong label."
 
 label=$1
 
