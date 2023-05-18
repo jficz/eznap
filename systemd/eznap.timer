@@ -1,0 +1,9 @@
+[Unit]
+Description=Trigger eznap on boot and then every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnActiveSec=15min
+
+[Install]
+WantedBy=timers.target

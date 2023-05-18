@@ -1,0 +1,5 @@
+[Unit]
+Description="Trigger eznap"
+
+[Service]
+ExecStart=eznap trigger

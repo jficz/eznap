@@ -1,8 +1,0 @@
-[Unit]
-
-[Timer]
-OnUnitActiveSec=1h
-Unit=eznap@hourly.service
-
-[Install]
-WantedBy=timers.target

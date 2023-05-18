@@ -1,8 +1,0 @@
-[Unit]
-
-[Timer]
-OnUnitActiveSec=1M
-Unit=eznap@monthly.service
-
-[Install]
-WantedBy=timers.target

@@ -2,7 +2,7 @@
 
 appId="cz.jfi.eznap"
 appName="eznap"
-version="0.2.2"
+version="0.3.0"
 
 declare -A _keep
 ## Default number of snapshots to keep for each label
@@ -39,79 +39,124 @@ fail() {
   failcode 1 $*
 }
 
+zdate() {
+  TZ=UTC printf "%($1)T"
+}
+
+zfsList() {
+  type=$1
+  props=$2
+  opts=$3
+  dataset=$4
+
+  LC_ALL=C $_zfs list -H \
+  -t $type \
+  -o $props \
+  $opts \
+  $dataset \
+  2>&1
+
+  [[ $? -gt 0 ]] && fail "Error enumerating zfs datasets."
+}
+
 snapsToDestroy() {
   readarray -tn 0 line
 
-  ## remove first $1 lines from output
-  ## that is, print all snapshots that should be destroyed
+  ## remove first $1 lines from output; that is, remove all snapshots
+  ## that are to be kept and print only snapshots that should be destroyed,
   ## assuming they are sorted by date, oldest last
   #
   printf '%s\n' "${line[@]:$1}"
 }
+
 
 _zfs=$(PATH=$PATH:/usr/sbin:/sbin:/usr/bin:/bin command -v zfs 2> /dev/null)
 [[ $? -gt 0 ]] && fail '`zfs` command not found.'
 
 [[ -z "$1" ]] && fail "Missing label." `usage`
 
-[[ -z "${_keep[$1]}" ]] && fail "Wrong label." `usage`
+[[ -z "${_keep[$1]}" && "$1" != "trigger" ]] && fail "Wrong label." `usage`
 
 label=$1
 
-## -H makes the output script-friendly
-#
-DATASETS=$(
-  env LC_ALL=C \
-  $_zfs list -H \
-  -t filesystem,volume \
-  -o name,com.sun:auto-snapshot,com.sun:auto-snapshot:$label \
-  2>&1
-)
+if [[ "$label" = "trigger" ]]; then
+  declare -A _interval
+  _frequent_default=$(( 15 * 60 ))
+  _interval=(
+    [hourly]=$(( 60 * 60 ))
+    [daily]=$(( 60 * 60 * 24 ))
+    [weekly]=$(( 60 * 60 * 24 * 7 ))
+    [monthly]=$(( 60 * 60 * 24 * 30 ))
+  )
 
-[[ $? -gt 0 ]] && fail -e "Error enumerating zfs datasets. Command output:\n" "$DATASETS"
+  declare -a _actions
 
+  labels=( ${!_keep[@]} )
+
+  DATASETS=$(zfsList filesystem,volume name,com.sun:auto-snapshot,${appId}:frequency -p)
+  while read dataset snap freq; do
+    [[ "${snap,,}" != "true" ]] && continue
+
+    _now=$(zdate '%s')
+  
+    if [[ $freq =~ ^[0-9]+$ ]]; then
+      _interval[frequent]=$(( $freq * 60 ))
+    else
+      _interval[frequent]=$_frequent_default
+    fi
+
+    SNAPS=$(zfsList snap name,${appId}:label,creation '-p -S creation' $dataset)
+    localLabels=( ${labels[@]} )
+    while read sname slabel screation; do
+      if [[ " ${localLabels[@]} " =~ " $slabel " ]]; then
+        localLabels=( ${localLabels[@]/$slabel} )
+        if [[ $(( $_now - $screation )) -ge ${_interval[$slabel]} ]]; then
+          labels=(${labels[@]/$slabel})
+          _actions+=($slabel)
+        fi
+      fi
+      [[ -z "${labels[@]}" ]] && break
+    done <<< $SNAPS
+  done <<< $DATASETS
+
+  for _action in ${_actions[@]}; do
+    $0 $_action
+  done
+
+fi
+
+## Cannot use pipe `zfsList | while` because pipe creates new shell for the `which` part
+## which scopes all vars to that subshell only
+DATASETS=$(zfsList filesystem,volume name,com.sun:auto-snapshot,com.sun:auto-snapshot:$label)
 while read dataset snap keep; do
 
   case "${keep,,}" in
   ## '-' (not set) and 'true' means use default retention
-    "-" | "true")  keep=${_keep[$label]} ;;
+    "-" | "true")  keep=${_keep[$label]}
+                   ;;
   ## anything else but a positive integer means no snapshot
-    '' | *[!0-9]*) snap=false ;;
+    '' | *[!0-9]*) snap=false
+                   ;;
   esac
 
   if [[ "${snap,,}" = "true" ]]; then
 
     if [[ $keep -gt 0 ]]; then
-      _date=$(TZ=UTC printf '%(%F_%T)TZ')
+      _date=$(zdate '%F_%TZ')
       SNAPPROPS="-o ${appId}:label=$label"
       SNAPNAME="${dataset}@${appName}-${label}_${_date}"
       $_zfs snapshot $SNAPPROPS "$SNAPNAME" 2>/dev/null
       [[ $? -gt 0 ]] && err "Create snapshot failed for '$SNAPNAME'." && ret=2
     fi
 
-    SNAPSHOTS=$(
-      env LC_ALL=C \
-      $_zfs list -H \
-      -t snapshot \
-      -S creation \
-      -o name,${appId}:label \
-      $dataset
-    )
-    [[ $? -gt 0 ]] && failcode 2 "Error enumerating zfs snapshots. No old snapshots deleted for dataset '${dataset}'."
-
-    DESTROY=$(
-      while read sname slabel; do
-        if [[ "${sname%%@*}" = "$dataset" && "$slabel" = "$label" ]]; then
-          echo $sname
-        fi
-      done <<< $SNAPSHOTS | snapsToDestroy $keep
-    )
-
-    for sn in $DESTROY; do
-      $_zfs destroy "$sn" 2>/dev/null
-      [[ $? -gt 0 ]] && err "Destroy snapshot failed for '$sn'." && ret=2
-    done
-
+    SNAPS=$(zfsList snapshot name,${appId}:label '-S creation' $dataset | snapsToDestroy $keep)
+    while read sname slabel; do
+      if [[ "${sname%%@*}" = "$dataset" && "$slabel" = "$label" ]]; then
+        $_zfs destroy "$sname"
+        [[ $? -gt 0 ]] && err "Destroy snapshot failed for '$sname'." && ret=2
+      fi
+    done <<< $SNAPS
+  
   fi
 done <<< $DATASETS
 
