@@ -49,15 +49,15 @@ Datasets without this are completely ignored by `eznap`, even for _extraneous sn
 
 All labels are enabled by default with default retention policies. To disable a specific label:
 
-  - `com.sun.auto-snapshot:<label>=false`
+  - `com.sun:auto-snapshot:<label>=false`
 
 To enable a label explicitly (like when the property is inherited):
 
-  - `com.sun.auto-snapshot:<label>=true`
+  - `com.sun:auto-snapshot:<label>=true`
 
 To enable a label with a _custom retention policy_:
 
-  - `com.sun.auto-snapshot:<label>=<integer>`
+  - `com.sun:auto-snapshot:<label>=<integer>`
 
 `<label>` is a keyword described above (`frequent`, `daily`, etc.)
 
