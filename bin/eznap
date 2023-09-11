@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
+# source: https://github.com/jficz/eznap
+
 appId="cz.jfi.eznap"
 appName="eznap"
-version="0.3.3"
+version="0.4.0"
 
 declare -A _keep
 ## Default number of snapshots to keep for each label
@@ -36,7 +38,6 @@ failcode() {
   ret=$1
   shift
   err $*
-  usage
   exit $ret
 }
 
