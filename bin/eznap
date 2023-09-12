@@ -4,7 +4,7 @@
 
 appId="cz.jfi.eznap"
 appName="eznap"
-version="0.4.0"
+version="0.4.1"
 
 declare -A _keep
 ## Default number of snapshots to keep for each label
@@ -20,29 +20,31 @@ _keep=(
 ret=0
 
 usage() {
-  printf -v labels '%s | ' ${!_keep[@]}
-  echo
-  echo "eznap v${version} (c) 2023 jficz"
-  echo
-  echo "Usage: $0 < ${labels%|*}> | < trigger >"
-  echo "Retun codes: 0 - success"
-  echo "             1 - fatal failure, no changes made"
-  echo "             2 - partial failure, some changes possibly made"
+  # shellcheck disable=SC2317 # somehow shellcheck thinks this is unreachable
+  printf -v labels '%s | ' "${!_keep[@]}"
+  # shellcheck disable=SC2317 # somehow shellcheck thinks this is unreachable
+  cat << EOF
+eznap v${version} (c) 2023 jficz
+Usage: $0 < ${labels%|*}> | < trigger >
+Retun codes: 0 - success
+             1 - fatal failure, no changes made
+             2 - partial failure, some changes possibly made
+EOF
 }
 
 err() {
-  echo E: $* >&2
+  echo E: "$*" >&2
 }
 
 failcode() {
   ret=$1
   shift
-  err $*
-  exit $ret
+  err "$*"
+  exit "$ret"
 }
 
 fail() {
-  failcode 1 $*
+  failcode 1 "$*"
 }
 
 zdate() {
@@ -55,13 +57,15 @@ zfsList() {
   opts=$3
   dataset=$4
 
+  # shellcheck disable=SC2086 # we _want_ $opts to be word-splitted
   LC_ALL=C $_zfs list -H \
-  -t $type \
-  -o $props \
+  -t "$type" \
+  -o "$props" \
   $opts \
-  $dataset \
+  "$dataset" \
   2>&1
 
+  # shellcheck disable=SC2181 # this is more readable
   [[ $? -gt 0 ]] && fail "Error enumerating zfs datasets."
 }
 
@@ -77,7 +81,8 @@ snapsToDestroy() {
 
 
 _zfs=$(PATH=$PATH:/usr/sbin:/sbin:/usr/bin:/bin command -v zfs 2> /dev/null)
-[[ $? -gt 0 ]] && fail '`zfs` command not found.'
+# shellcheck disable=SC2181 # this is more readable
+[[ $? -gt 0 ]] && fail "'zfs' command not found."
 
 [[ -z "$1" ]] && fail "Missing label."
 
@@ -97,44 +102,50 @@ if [[ "$label" = "trigger" ]]; then
 
   declare -a _actions
 
-  labels=( ${!_keep[@]} )
+  labels=( "${!_keep[@]}" )
 
   DATASETS=$(zfsList filesystem,volume name,com.sun:auto-snapshot,${appId}:frequency -p)
-  while read dataset snap freq; do
+  # shellcheck disable=SC2086 # we _want_ word splitting here (<<< $DATASETS at the end of the loop)
+  while read -r dataset snap freq; do
     [[ "${snap,,}" != "true" ]] && continue
 
     _now=$(zdate '%s')
   
     if [[ $freq =~ ^[0-9]+$ ]]; then
-      _interval[frequent]=$(( $freq * 60 ))
+      _interval[frequent]=$(( freq * 60 ))
     else
       _interval[frequent]=$_frequent_default
     fi
 
-    SNAPS=$(zfsList snap name,${appId}:label,creation '-p -S creation' $dataset)
-    localLabels=( ${labels[@]} )
-    while read sname slabel screation; do
-      if [[ " ${localLabels[@]} " =~ " $slabel " ]]; then
-        localLabels=( ${localLabels[@]/$slabel} )
-        if [[ $(( $_now - $screation )) -ge ${_interval[$slabel]} ]]; then
-          labels=(${labels[@]/$slabel})
-          _actions+=($slabel)
+    SNAPS=$(zfsList snap name,${appId}:label,creation '-p -S creation' "$dataset")
+    # shellcheck disable=SC2206 # we do _not_ want to prevent word splitting
+    localLabels=( "${labels[@]}" )
+    # shellcheck disable=SC2086 # we _want_ word splitting here (<<< $SNAPS at the end)
+    while read -r sname slabel screation; do
+      if [[ " ${localLabels[*]} " == *" $slabel "* ]]; then
+        # shellcheck disable=SC2206 # we do _not_ want to prevent word splitting
+        localLabels=( ${localLabels[*]/$slabel} )
+        if [[ $(( _now - screation )) -ge ${_interval[$slabel]} ]]; then
+          # shellcheck disable=SC2206 # we do _not_ want to prevent word splitting
+          labels=( ${labels[*]/$slabel} )
+          _actions+=( "$slabel" )
         fi
       fi
-      [[ -z "${labels[@]}" ]] && break
+      [[ ${#labels[*]} -eq 0 ]] && break
     done <<< $SNAPS
   done <<< $DATASETS
 
-  for _action in ${_actions[@]}; do
-    $0 $_action
+  for _action in "${_actions[@]}"; do
+    $0 "$_action"
   done
 
 fi
 
 ## Cannot use pipe `zfsList | while` because pipe creates new shell for the `which` part
 ## which scopes all vars to that subshell only
-DATASETS=$(zfsList filesystem,volume name,com.sun:auto-snapshot,com.sun:auto-snapshot:$label)
-while read dataset snap keep; do
+DATASETS=$(zfsList filesystem,volume name,com.sun:auto-snapshot,com.sun:auto-snapshot:"$label")
+    # shellcheck disable=SC2086 # we _want_ word splitting here (<<< $DATASETS at the end)
+while read -r dataset snap keep; do
 
   case "${keep,,}" in
   ## '-' (not set) and 'true' means use default retention
@@ -151,15 +162,21 @@ while read dataset snap keep; do
       _date=$(zdate '%F_%TZ')
       SNAPPROPS="-o ${appId}:label=$label"
       SNAPNAME="${dataset}@${appName}-${label}_${_date}"
-      $_zfs snapshot $SNAPPROPS "$SNAPNAME" 2>/dev/null
-      [[ $? -gt 0 ]] && err "Create snapshot failed for '$SNAPNAME'." && ret=2
+      # shellcheck disable=SC2086 # we do _not_ prevent word splitting here
+      if ! $_zfs snapshot $SNAPPROPS "$SNAPNAME" 2>/dev/null; then
+        err "Create snapshot failed for '$SNAPNAME'."
+        ret=2
+      fi
     fi
 
-    SNAPS=$(zfsList snapshot name,${appId}:label '-S creation' $dataset | snapsToDestroy $keep)
-    while read sname slabel; do
+    SNAPS=$(zfsList snapshot name,${appId}:label '-S creation' "$dataset" | snapsToDestroy "$keep")
+    # shellcheck disable=SC2086 # we _want_ word splitting here (<<< $SNAPS at the end)
+    while read -r sname slabel; do
       if [[ "${sname%%@*}" = "$dataset" && "$slabel" = "$label" ]]; then
-        $_zfs destroy "$sname"
-        [[ $? -gt 0 ]] && err "Destroy snapshot failed for '$sname'." && ret=2
+        if ! $_zfs destroy "$sname"; then
+          err "Destroy snapshot failed for '$sname'."
+          ret=2
+        fi
       fi
     done <<< $SNAPS
   
